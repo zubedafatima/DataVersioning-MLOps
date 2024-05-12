@@ -37,15 +37,12 @@ def transform():
 # Load function
 def load():
     print("-----------Storing data------------")
+
     # Add the transformed file to DVC
     subprocess.run(['dvc', 'add', '/tmp/transformed_articles.csv'], check=True)
-    # Commit the changes to the Git repository
-    subprocess.run(['git', 'add', '/tmp/transformed_articles.csv.dvc'], check=True)
-    subprocess.run(['git', 'commit', '-m', 'Update data'], check=True)
     # Push the data to the remote DVC storage
-    subprocess.run(['dvc', 'push'], check=True)
-    # Optionally, push changes to the Git remote repository
-    subprocess.run(['git', 'push'], check=True)
+    subprocess.run(['dvc', 'push', '-r', 'myremote'], check=True)
+
 
 # Airflow DAG definitions
 default_args = {
