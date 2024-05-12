@@ -1,85 +1,88 @@
 from airflow import DAG
-from airflow.operators.python_operator import PythonOperator
+from airflow.operators.python import PythonOperator
 from datetime import datetime, timedelta
-from bs4 import BeautifulSoup
 import requests
+from bs4 import BeautifulSoup
+import pandas as pd
 import subprocess
 
+# Extraction function
+def extract():
+    print("-----------Extracting data------------")
+    sources = ['https://www.dawn.com/', 'https://www.bbc.com/']
+    articles = []
+    for source in sources:
+        response = requests.get(source)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        for link in soup.find_all('a', href=True):
+            if link.text:
+                articles.append({
+                    'source': source,
+                    'title': link.text.strip(),
+                    'url': link['href']
+                })
+    df = pd.DataFrame(articles)
+    df.to_csv('/tmp/extracted_articles.csv', index=False)
+    return '/tmp/extracted_articles.csv'
+
+# Transformation function
+def transform():
+    print("-----------Transforming data------------")
+    df = pd.read_csv('/tmp/extracted_articles.csv')
+    df.drop_duplicates(subset=['url'], inplace=True)
+    df.dropna(subset=['title'], inplace=True)
+    df.to_csv('/tmp/transformed_articles.csv', index=False)
+    return '/tmp/transformed_articles.csv'
+
+# Load function
+def load():
+    print("-----------Storing data------------")
+    # Add the transformed file to DVC
+    subprocess.run(['dvc', 'add', '/tmp/transformed_articles.csv'], check=True)
+    # Commit the changes to the Git repository
+    subprocess.run(['git', 'add', '/tmp/transformed_articles.csv.dvc'], check=True)
+    subprocess.run(['git', 'commit', '-m', 'Update data'], check=True)
+    # Push the data to the remote DVC storage
+    subprocess.run(['dvc', 'push'], check=True)
+    # Optionally, push changes to the Git remote repository
+    subprocess.run(['git', 'push'], check=True)
+
+# Airflow DAG definitions
 default_args = {
     'owner': 'airflow',
+    'depends_on_past': False,
+    'start_date': datetime(2023, 1, 1),
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
 }
 
 dag = DAG(
-    'news_extraction_dag',
+    'simple_mlops_dag',
     default_args=default_args,
-    description='A DAG to extract news articles from dawn.com and BBC.com',
-    schedule_interval='@daily',
+    description='A simple DAG for data processing with DVC',
+    schedule_interval=timedelta(days=1),
+    catchup=False,
 )
 
-def extract_news():
-    # Extract news from dawn.com
-    dawn_links = extract_links('https://www.dawn.com/')
-    dawn_articles = [extract_article(link) for link in dawn_links]
-
-    # Extract news from BBC.com
-    bbc_links = extract_links('https://www.bbc.com/')
-    bbc_articles = [extract_article(link) for link in bbc_links]
-
-    return dawn_articles, bbc_articles
-
-def extract_links(url):
-    # Extract links from the given URL
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    links = [a['href'] for a in soup.find_all('a', href=True)]
-    return links
-
-def extract_article(link):
-    # Extract title and description from the article
-    response = requests.get(link)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    title = soup.find('title').text
-    description = soup.find('meta', attrs={'name': 'description'}).get('content', '')
-    return {'title': title, 'description': description}
-
-def preprocess_data(data):
-    # Preprocess the extracted data
-    # Implement your preprocessing logic here
-    pass
-
-def store_data(data):
-    # Store the processed data on Google Drive
-    # Implement Google Drive API integration here
-    pass
-
-def version_control():
-    # Version control the data using DVC
-    subprocess.run(['dvc', 'add', 'data/'])
-    subprocess.run(['git', 'commit', '-m', 'Added new data version'])
-    subprocess.run(['git', 'push'])
-
-extract_task = PythonOperator(
-    task_id='extract_data',
-    python_callable=extract_news,
-    dag=dag,
+task1 = PythonOperator(
+    task_id='extract',
+    python_callable=extract,
+    dag=dag
 )
 
-transform_task = PythonOperator(
-    task_id='transform_data',
-    python_callable=preprocess_data,
-    dag=dag,
+task2 = PythonOperator(
+    task_id='transform',
+    python_callable=transform,
+    dag=dag
 )
 
-store_task = PythonOperator(
-    task_id='store_data',
-    python_callable=store_data,
-    dag=dag,
+task3 = PythonOperator(
+    task_id='load',
+    python_callable=load,
+    dag=dag
 )
 
-version_control_task = PythonOperator(
-    task_id='version_control',
-    python_callable=version_control,
-    dag=dag,
-)
-
-extract_task >> transform_task >> store_task >> version_control_task
+# Setting up dependencies
+task1 >> task2 >> task3
