@@ -37,11 +37,14 @@ def transform():
 # Load function
 def load():
     print("-----------Storing data------------")
-
-    # Add the transformed file to DVC
-    subprocess.run(['dvc', 'add', '/tmp/transformed_articles.csv'], check=True)
-    # Push the data to the remote DVC storage
-    subprocess.run(['dvc', 'push', '-r', 'myremote'], check=True)
+    try:
+        # Add the transformed file to DVC
+        subprocess.run(['dvc', 'add', 'transformed_articles.csv'], check=True)
+        # Push the data to the remote DVC storage
+        subprocess.run(['dvc', 'push', '-r', 'myremote'], check=True)
+        print("Data stored successfully!")
+    except Exception as e:
+        print(f"Error storing data: {str(e)}")
 
 
 # Airflow DAG definitions
