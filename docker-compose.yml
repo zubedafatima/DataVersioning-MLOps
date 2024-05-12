@@ -1,0 +1,10 @@
+version: "3"
+
+services:
+  mlops-airflow:
+    image: mlopsassignment2:latest
+    volumes:
+      - ./airflow:/opt/airflow
+    ports:
+      - "3000:8080" # Map container's port 8080 to host's port 3000
+    command: airflow webserver --port 8080
